@@ -89,6 +89,7 @@ export function instanceConfigs(cfg: AppConfig): InstanceConfigMap {
           gemini: { driver: "geminiAgent" },
           claude: { driver: "claudeAgent" },
           codex: { driver: "codex" },
+          antigravity: { driver: "antigravityAgent" },
           computer: { driver: "boxAgent" },
         };
   for (const entry of Object.values(map)) {
