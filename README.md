@@ -51,7 +51,7 @@ already have:
 - **Local first.** One small harness server on `127.0.0.1` owns every agent process. Transcripts, keys, and
   events live in `~/.openmausbot`, not a cloud.
 - **Agents with hands.** Each bot can get a cloud Linux desktop it drives while you watch live, plus 500+ apps
-  through Composio Connect. Local computer control is currently available on macOS and tracked for Linux.
+  through Composio Connect. Local computer control is available on macOS and as an explicit Ubuntu Xorg beta.
 
 ## Features
 
@@ -161,7 +161,7 @@ flowchart LR
 | Harness | `server/harness/` | Registry (configs → live instances) and the fan-in event bus every client folds. |
 | API | `server/index.ts` | Bots, turns, approvals, model catalog, computer lifecycle, connectors, config — HTTP + SSE. |
 | App | `src/` | The chat shell. Server-backed store, one reducer, zero client-side transports. |
-| Desktop | `electron/` | macOS, Windows, and Ubuntu shells with an embedded harness and platform capabilities; Apple speech and current local CUA stay macOS-only. |
+| Desktop | `electron/` | macOS, Windows, and Ubuntu shells with an embedded harness and platform capabilities; Apple speech stays macOS-only, while user-installed CUA can enable the Ubuntu Xorg local-control beta. |
 
 ## Quick start
 
@@ -206,13 +206,15 @@ pnpm package:linux    # Ubuntu x64: .deb + AppImage; no Swift required
 | Packaged app, embedded harness, local agent CLIs | Supported | Beta | Beta |
 | Composio and Box/cloud computers | Supported | Beta | Beta |
 | Explicit preview-only local screen capture | Supported | Beta | Beta |
-| Bot control of this computer | Supported | Planned | Planned after compositor validation |
+| Bot control of this computer | Supported | Beta: opt-in, Cua 0.19.3 | Planned after compositor validation |
 | Native on-device dictation | Supported | Planned | Planned |
 
-The Linux preview is user-initiated and never enables local bot control or Auto routing. Unavailable native
-features fail closed without blocking chat or cloud features. Linux local computer control, Wayland automation,
-dictation, and ARM64 are tracked in
-[#29](https://github.com/milind-soni/OpenMausBot/issues/29) and are not claimed by the baseline package.
+The Linux preview is user-initiated and never enables local bot control or Auto routing. The Xorg control beta
+requires a separately installed Cua Driver 0.19.3, explicit app opt-in, and an explicit per-bot **This computer**
+selection; every local action asks for approval. Wayland control stays disabled. Unavailable native features fail
+closed without blocking chat or cloud features. See the [Ubuntu Desktop guide](docs/linux-desktop.md) and
+tracking issues [#29](https://github.com/milind-soni/OpenMausBot/issues/29) and
+[#79](https://github.com/milind-soni/OpenMausBot/issues/79).
 
 Optional, pasted once in **App Settings** (gear in the sidebar footer):
 
