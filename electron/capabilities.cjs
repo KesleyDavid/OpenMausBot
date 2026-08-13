@@ -35,6 +35,8 @@ function desktopCapabilities({
 } = {}) {
   const hostPlatform = normalizedPlatform(platform);
   const isMac = hostPlatform === "darwin";
+  const hostSession = linuxSession(hostPlatform, env);
+  const linuxPreview = hostPlatform === "linux" && hostSession !== "headless";
   const localAvailable = localComputerReady(hostPlatform, localConnection);
 
   return {
@@ -48,14 +50,19 @@ function desktopCapabilities({
             : hostPlatform === "win32"
               ? "Windows"
               : "Desktop",
-      session: linuxSession(hostPlatform, env),
+      session: hostSession,
       packaged: Boolean(packaged),
     },
     windowChrome: isMac ? "mac-inset" : "native",
     screenPreview: {
-      available: isMac,
-      interaction: isMac ? "direct" : "none",
-      ...(!isMac ? { reasonCode: "unsupported-platform" } : {}),
+      available: isMac || linuxPreview,
+      interaction: isMac || hostSession === "x11" ? "direct" : hostSession === "wayland" ? "portal-picker" : "none",
+      ...(!(isMac || linuxPreview)
+        ? {
+            reasonCode:
+              hostPlatform === "linux" ? "headless-session" : "unsupported-platform",
+          }
+        : {}),
     },
     dictation: {
       available: isMac,

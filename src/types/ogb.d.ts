@@ -32,6 +32,8 @@ declare global {
     ogb?: {
       platform: NodeJS.Platform;
       getCapabilities(): Promise<DesktopCapabilities>;
+      /** Arms one user-initiated display capture request from this frame. */
+      beginScreenPreviewIntent(): boolean;
       screenFrame(): Promise<string | null>;
       speechStart(): Promise<void>;
       speechStop(): Promise<void>;
