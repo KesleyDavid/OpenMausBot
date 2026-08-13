@@ -36,7 +36,10 @@ function check(manual = false) {
   if (!autoUpdater) return;
   userInitiated = manual;
   try {
-    autoUpdater.checkForUpdates();
+    // electron-updater reports feed/network failures by both emitting `error`
+    // and rejecting this promise. Handle the rejection as well so a missing
+    // platform feed never becomes an unhandled rejection in the packaged app.
+    void autoUpdater.checkForUpdates().catch(reportError);
   } catch (e) {
     reportError(e);
   }
@@ -52,7 +55,9 @@ export function registerUpdaterIpc() {
   ipcMain.handle("update:check", () => check(true));
   ipcMain.handle("update:download", () => {
     try {
-      autoUpdater?.downloadUpdate();
+      void autoUpdater?.downloadUpdate().catch((e) =>
+        setState({ status: "error", message: String(e?.message ?? e) }),
+      );
     } catch (e) {
       setState({ status: "error", message: String(e?.message ?? e) });
     }
