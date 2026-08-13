@@ -480,7 +480,11 @@ function reducer(state: AppState, action: Action): AppState {
       const next = mascotChanged
         ? withMascotMotion(state, action.botId, "customize")
         : state;
-      return updateBot(next, action.botId, (b) => ({ ...b, ...action.patch }));
+      return updateBot(next, action.botId, (b) => ({
+        ...b,
+        ...action.patch,
+        ...(action.patch.computer === "local" ? { autoApprove: false } : {}),
+      }));
     }
     case "threadActive": {
       const bot = state.bots.find((b) => b.threadId === action.threadId);

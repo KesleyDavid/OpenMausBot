@@ -9,6 +9,8 @@ import {
 } from "@/lib/mascot";
 import { ModelPicker } from "./ModelPicker";
 import { cn } from "@/lib/cn";
+import { useDesktopCapabilities } from "./DesktopCapabilities";
+import { instanceSupportsLocalComputer, localComputerDisabledReason } from "@/lib/local-computer";
 
 function Field({
   label,
@@ -30,6 +32,10 @@ const inputCls =
 
 export function SettingsPanel({ bot }: { bot: Bot }) {
   const { state, dispatch } = useStore();
+  const { capabilities } = useDesktopCapabilities();
+  const providerSupportsLocal = instanceSupportsLocalComputer(state.instances, bot);
+  const localSelectable = capabilities.localComputer.available && providerSupportsLocal;
+  const localDisabledReason = localComputerDisabledReason({ capabilities, providerSupportsLocal });
   const patch = (
     p: Partial<
       Pick<
@@ -177,16 +183,19 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
               {(["cloud", "local", "off"] as const).map((mode, i) => (
                 <button
                   key={mode}
+                  disabled={mode === "local" && !localSelectable}
+                  title={mode === "local" && !localSelectable ? localDisabledReason ?? undefined : undefined}
                   onClick={() => patch({ computer: mode })}
                   className={cn(
                     "flex-1 py-1.5 text-[13px] capitalize",
                     i > 0 && "border-l border-hairline/40",
+                    mode === "local" && !localSelectable && "cursor-not-allowed opacity-40",
                     bot.computer === mode
                       ? "bg-raised text-ink"
                       : "text-ink-secondary hover:bg-raised/60 hover:text-ink",
                   )}
                 >
-                  {mode}
+                  {mode === "local" ? "This computer" : mode === "cloud" ? "Cloud" : "Off"}
                 </button>
               ))}
             </div>
@@ -196,7 +205,9 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
             <div>
               <div className="text-[15px] font-medium text-ink">Auto mode</div>
               <div className="mt-0.5 text-[13px] text-ink-secondary">
-                {bot.autoApprove
+                {bot.computer === "local"
+                  ? "Local computer actions always require your approval in this beta."
+                  : bot.autoApprove
                   ? "Keeps going on its own — you'll still be asked about anything destructive, and about questions it asks you."
                   : "Approve each action yourself. Turn on to let this bot keep working without stopping to ask."}
               </div>
@@ -205,9 +216,11 @@ export function SettingsPanel({ bot }: { bot: Bot }) {
               role="switch"
               aria-checked={Boolean(bot.autoApprove)}
               aria-label="Auto mode"
+              disabled={bot.computer === "local"}
               onClick={() => patch({ autoApprove: !bot.autoApprove })}
               className={cn(
                 "relative h-[26px] w-[44px] shrink-0 rounded-full transition-colors",
+                bot.computer === "local" && "cursor-not-allowed opacity-40",
                 bot.autoApprove ? "bg-accent" : "bg-raised",
               )}
             >

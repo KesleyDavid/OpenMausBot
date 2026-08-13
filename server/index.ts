@@ -1009,6 +1009,7 @@ const server = createServer(async (req, res) => {
     m = path.match(/^\/api\/bots\/([\w-]+)$/);
     if (m && method === "PATCH") {
       const body = await readBody(req);
+      const existingBot = store.bot(m[1]);
       const patch: Record<string, unknown> = {};
       for (const key of ["name", "title", "description", "notifications", "modelSelection", "unread", "computer", "color", "mascotExpression", "pinned", "hidden"] as const) {
         if (body[key] !== undefined) patch[key] = body[key];
@@ -1018,6 +1019,9 @@ const server = createServer(async (req, res) => {
       // still answer .includes() — with substring matches, not tool names
       if (body.autoApprove !== undefined) {
         if (typeof body.autoApprove !== "boolean") return json(res, 400, { error: "autoApprove must be true or false" });
+        if (body.autoApprove === true && existingBot?.computer === "local") {
+          return json(res, 400, { error: "Auto mode is unavailable while this bot uses the local computer beta" });
+        }
         patch.autoApprove = body.autoApprove;
       }
       if (body.alwaysAllow !== undefined) {
@@ -1026,10 +1030,31 @@ const server = createServer(async (req, res) => {
         }
         patch.alwaysAllow = [...new Set(body.alwaysAllow as string[])].slice(0, 200);
       }
+      if (body.computer === "local" && existingBot?.autoApprove) {
+        patch.autoApprove = false;
+      }
+      if (existingBot?.computer === "local" && body.computer !== undefined && body.computer !== "local") {
+        await registry
+          .get(existingBot.modelSelection.instanceId)
+          ?.adapter.interruptTurn(existingBot.threadId)
+          .catch(() => {});
+      }
       const bot = store.patchBot(m[1], patch);
       if (!bot) return json(res, 404, { error: "no such bot" });
       broadcast({ kind: "bot", bot });
       return json(res, 200, { bot });
+    }
+
+    if (method === "POST" && path === "/api/local-computer/interrupt") {
+      await Promise.allSettled(
+        store.bots
+          .filter((bot) => bot.computer === "local")
+          .map((bot) =>
+            registry.get(bot.modelSelection.instanceId)?.adapter.interruptTurn(bot.threadId),
+          )
+          .filter((turn): turn is Promise<void> => Boolean(turn)),
+      );
+      return json(res, 200, { ok: true });
     }
     m = path.match(/^\/api\/bots\/([\w-]+)$/);
     if (m && method === "DELETE") {
