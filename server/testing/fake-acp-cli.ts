@@ -18,12 +18,13 @@ import { writeFileSync } from "node:fs";
 
 const mode = process.env.FAKE_ACP_MODE ?? "happy";
 const argv = process.argv.slice(2);
+const dumpState: Record<string, unknown> = { argv, env: process.env };
 if (argv.includes("--version")) {
   console.log("fake-acp 1.0.0");
   process.exit(0);
 }
 if (process.env.FAKE_ACP_DUMP) {
-  writeFileSync(process.env.FAKE_ACP_DUMP, JSON.stringify({ argv, env: process.env }, null, 2));
+  writeFileSync(process.env.FAKE_ACP_DUMP, JSON.stringify(dumpState, null, 2));
 }
 
 const out = (obj: unknown) => process.stdout.write(JSON.stringify(obj) + "\n");
@@ -135,6 +136,10 @@ function handle(msg: any) {
       break;
     case "session/new": {
       const servers: McpEntry[] = Array.isArray(msg.params?.mcpServers) ? msg.params.mcpServers : [];
+      if (process.env.FAKE_ACP_DUMP) {
+        dumpState.mcpServers = servers;
+        writeFileSync(process.env.FAKE_ACP_DUMP, JSON.stringify(dumpState, null, 2));
+      }
       agentsMcp = servers.find((s: any) => s?.name === "agents") ?? null;
       result(msg.id, { sessionId: "fake-acp-session" });
       break;

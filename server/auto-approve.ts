@@ -49,15 +49,16 @@ export function looksDestructive(text: string): boolean {
  * client so the two sides can never disagree about what was granted. */
 const COMMAND_TOOLS = new Set(["bash", "shell", "execute", "run_command", "computer_exec", "terminal"]);
 
-export function approvalKey(tool: string, summary: string): string {
+export function approvalKey(tool: string, summary: string, scope?: "local-computer"): string {
   const bare = tool.replace(/^mcp__[^_]+__/, "").toLowerCase();
-  if (!COMMAND_TOOLS.has(bare)) return tool;
+  if (!COMMAND_TOOLS.has(bare)) return scope ? `${scope}:${tool}` : tool;
   // first bare word of the command, skipping env assignments and sudo
   const words = summary.trim().split(/\s+/);
   let i = 0;
   while (i < words.length && (/^[A-Z_][A-Z0-9_]*=/.test(words[i]) || words[i] === "sudo")) i += 1;
   const program = (words[i] ?? "").split("/").pop()?.replace(/[^\w.-]/g, "") ?? "";
-  return program ? `${tool}:${program}` : tool;
+  const key = program ? `${tool}:${program}` : tool;
+  return scope ? `${scope}:${key}` : key;
 }
 
 export interface AutoApprover {
@@ -68,11 +69,19 @@ export interface AutoApprover {
 /** Why this request may be answered without the human, or null to ask.
  * The returned string becomes the chip in the transcript, so an
  * auto-approved action is never invisible. */
-export function autoDecision(bot: AutoApprover, tool: string, summary: string): string | null {
+export function autoDecision(
+  bot: AutoApprover,
+  tool: string,
+  summary: string,
+  scope?: "local-computer",
+): string | null {
+  // The user's active desktop is never delegated to bot auto mode or a
+  // remembered cloud/tool grant in the Linux beta.
+  if (scope === "local-computer") return null;
   // the guards come first, so an "always allow" can never widen into them
   if (looksDestructive(summary) || looksDestructive(tool)) return null;
   if (looksSensitive(summary)) return null;
-  const key = approvalKey(tool, summary);
+  const key = approvalKey(tool, summary, scope);
   if (bot.alwaysAllow?.includes(key)) return `auto-approved ${key} (always allowed)`;
   if (bot.autoApprove) return `auto-approved ${tool}`;
   return null;

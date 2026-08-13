@@ -18,6 +18,7 @@ import { EventBus } from "./harness/bus.ts";
 import { ProviderRegistry } from "./harness/registry.ts";
 import { mentionedBots, Store, type Message } from "./store.ts";
 import { readCuaConnection } from "./local-computer.ts";
+import { shouldMountLocalComputer } from "./local-routing.ts";
 
 const PORT = Number(process.env.OMB_PORT || process.env.OGB_PORT || 8799);
 const STATIC_DIR = process.env.OMB_STATIC_DIR || null;
@@ -197,7 +198,7 @@ bus.subscribe((event: RuntimeEvent) => {
       // looks destructive stops even in auto mode.
       const asker = bot ?? (speaker ? store.bot(speaker.botId) : undefined);
       const settled = permission && asker && event.requestId
-        ? autoDecision(asker, event.tool, event.summary)
+        ? autoDecision(asker, event.tool, event.summary, event.approvalScope)
         : null;
       if (settled && asker && event.requestId) {
         const instance = registry.get(asker.modelSelection.instanceId);
@@ -228,8 +229,14 @@ bus.subscribe((event: RuntimeEvent) => {
                 options: ["Allow", "Deny"],
                 requestId,
                 tool,
-                allowKey: approvalKey(tool, summary),
-                held: "Auto mode couldn't answer this one.",
+                allowKey: event.approvalScope
+                  ? undefined
+                  : approvalKey(tool, summary, event.approvalScope),
+                held:
+                  event.approvalScope === "local-computer"
+                    ? "Local computer actions always require your approval in this beta."
+                    : "Auto mode couldn't answer this one.",
+                approvalScope: event.approvalScope,
               },
             });
             askMessageByRequest.set(requestId, card.id);
@@ -241,16 +248,30 @@ bus.subscribe((event: RuntimeEvent) => {
         role: "bot",
         kind: "options",
         card: {
-          title: permission ? "Approval needed" : "Your bot has a question",
+          title:
+            permission && event.approvalScope === "local-computer"
+              ? "Local computer approval"
+              : permission
+                ? "Approval needed"
+                : "Your bot has a question",
           subtitle: event.summary,
           options: event.choices?.length ? event.choices : permission ? ["Allow", "Deny"] : [],
           requestId: event.requestId,
           tool: permission ? event.tool : undefined,
           // the exact grant "always allow" would remember, decided here so
           // client and server can never derive it differently
-          allowKey: permission ? approvalKey(event.tool, event.summary) : undefined,
+          allowKey:
+            permission && !event.approvalScope
+              ? approvalKey(event.tool, event.summary, event.approvalScope)
+              : undefined,
           // in auto mode a card can only mean the guard stopped it — say so
-          held: permission && asker?.autoApprove ? "This looked destructive, so auto mode stopped to ask." : undefined,
+          held:
+            permission && event.approvalScope === "local-computer"
+              ? "Local computer actions always require your approval in this beta."
+              : permission && asker?.autoApprove
+                ? "This looked destructive, so auto mode stopped to ask."
+                : undefined,
+          approvalScope: event.approvalScope,
         },
       });
       if (event.requestId) askMessageByRequest.set(event.requestId, message.id);
@@ -454,6 +475,7 @@ async function startTurn(
       // the live screen preview, which is a UI feature, not a tool
       const mountsComputer =
         instance.adapter.capabilities.computerMcp === true || instance.driverKind === "boxAgent";
+      const mountsLocalComputer = instance.adapter.capabilities.localComputerMcp === true;
       let previewBoxId: string | null = null;
       if (wants !== "off" && wants !== "local" && box.boxConfigured(cfg)) {
         let b = await box.findBox(cfg, bot.id).catch(() => null);
@@ -479,7 +501,14 @@ async function startTurn(
       // local computer (this Mac) via the Electron-hosted cua-driver: the
       // Electron main process owns the daemon (TCC attribution) and writes
       // its spawn contract to cua-connection.json; the harness only reads it
-      if (!integrations.computer && wants !== "off" && wants !== "cloud") {
+      if (
+        !integrations.computer &&
+        shouldMountLocalComputer({
+          requested: wants,
+          hostPlatform: process.platform,
+          providerSupportsLocal: mountsLocalComputer,
+        })
+      ) {
         const cua = readCuaConnection();
         if (cua) integrations.localComputer = cua;
       }

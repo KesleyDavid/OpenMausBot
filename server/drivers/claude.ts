@@ -221,6 +221,9 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
     const sendTurn = async (turn: SendTurnInput) => {
       const { threadId } = turn;
       if (active.has(threadId)) throw new Error("a turn is already running on this thread");
+      if (turn.integrations?.localComputer && config.permissionMode === "bypassPermissions") {
+        throw new Error("local computer control requires the interactive approval broker");
+      }
       const turnId = newId();
       const sessionId = typeof turn.resumeCursor === "string" ? turn.resumeCursor : null;
       const newSessionId = sessionId ? null : newId();
@@ -267,8 +270,13 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
         // this Mac, via the Electron-owned cua-driver daemon (spawn config
         // read from cua-connection.json — same "computer" name either way,
         // the agent just sees a computer)
-        mcpServers.computer = { ...turn.integrations.localComputer };
-        allowed.push("mcp__computer");
+        mcpServers.computer = {
+          command: turn.integrations.localComputer.command,
+          args: turn.integrations.localComputer.args,
+          env: turn.integrations.localComputer.env,
+        };
+        // Local tools are intentionally not pre-allowed. Claude routes each
+        // request through the OpenMausBot permission broker below.
       }
       // peer-agent comms (list_bots/ask_bot) — the harness builds the whole
       // spawn contract (command/args/env incl. the boot token) in
@@ -294,6 +302,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
               requestType: ask.kind,
               tool: ask.tool,
               summary: askSummary(ask),
+              approvalScope: turn.integrations?.localComputer ? "local-computer" : undefined,
               choices: Array.isArray(ask.input?.choices) ? (ask.input.choices as string[]).slice(0, 5) : undefined,
             }),
           onResolve: (resolved) =>
@@ -303,6 +312,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
               requestId: resolved.id,
               behavior: resolved.behavior,
               source: resolved.source,
+              approvalScope: turn.integrations?.localComputer ? "local-computer" : undefined,
             }),
         });
         args.push("--permission-prompt-tool", "mcp__ogb__approve");
@@ -477,7 +487,12 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
       snapshot,
       adapter: {
         provider: DRIVER_KIND,
-        capabilities: { sessionModelSwitch: "in-session", agentsMcp: true, computerMcp: true },
+        capabilities: {
+          sessionModelSwitch: "in-session",
+          agentsMcp: true,
+          computerMcp: true,
+          localComputerMcp: config.permissionMode !== "bypassPermissions",
+        },
         sendTurn,
         interruptTurn: async (threadId) => active.get(threadId)?.stop(),
         respondToRequest: async (threadId, requestId, decision) => {

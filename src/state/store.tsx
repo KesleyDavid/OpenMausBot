@@ -30,6 +30,7 @@ export interface OptionCardData {
   held?: string;
   /** the narrow grant "always allow" remembers, e.g. "Bash:git" */
   allowKey?: string;
+  approvalScope?: "local-computer";
 }
 
 export interface Message {
@@ -148,6 +149,12 @@ export interface InstanceInfo {
     version?: string | null;
   };
   models: { default: string; options: Array<{ id: string; label: string }> };
+  capabilities: {
+    sessionModelSwitch?: "in-session" | "unsupported";
+    agentsMcp?: boolean;
+    computerMcp?: boolean;
+    localComputerMcp?: boolean;
+  };
 }
 
 interface AppState {
