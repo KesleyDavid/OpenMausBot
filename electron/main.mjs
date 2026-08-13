@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { startCua, stopCua, registerCuaIpc } from "./cua.mjs";
+import { startCua, stopCua, registerCuaIpc, setCuaStateListener } from "./cua.mjs";
 import { startSpeech, stopSpeech } from "./speech.mjs";
 import { startUpdater, registerUpdaterIpc } from "./updater.mjs";
 import capabilitiesModule from "./capabilities.cjs";
@@ -297,6 +297,23 @@ ipcMain.handle("desktop:capabilities", async () =>
   }),
 );
 
+async function broadcastDesktopCapabilities() {
+  const capabilities = desktopCapabilities({
+    platform: process.platform,
+    env: process.env,
+    packaged: app.isPackaged,
+    localConnection: await cuaReady,
+  });
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) window.webContents.send("desktop:capabilities-changed", capabilities);
+  }
+}
+
+setCuaStateListener((connection) => {
+  cuaReady = Promise.resolve(connection);
+  void broadcastDesktopCapabilities();
+});
+
 app.whenReady().then(async () => {
   if (process.platform === "darwin") app.dock.setIcon(APP_ICON);
   // Display capture remains user-initiated. The renderer first sends a
@@ -348,7 +365,7 @@ app.whenReady().then(async () => {
   // connection descriptor on first render. Never blocks window creation on
   // failure — computer use degrades to "unavailable", the rest still works.
   cuaReady =
-    process.platform === "darwin"
+    process.platform === "darwin" || process.platform === "linux"
       ? startCua().catch((e) => {
           console.error("[cua] start failed:", e);
           return { mode: "unavailable", reason: String(e) };

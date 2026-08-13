@@ -23,6 +23,7 @@ import path from "node:path";
 
 const require = createRequire(import.meta.url);
 const { createCuaConnectionStore } = require("./cua-connection.cjs");
+const { createLinuxCuaRuntime } = require("./cua-linux-runtime.cjs");
 
 const INSTALLED_DRIVER = "/Applications/CuaDriver.app/Contents/MacOS/cua-driver";
 const STANDALONE_SOCKET = path.join(
@@ -32,9 +33,26 @@ const STANDALONE_SOCKET = path.join(
 const HOST_BUNDLE_ID = "com.openmausbot.app";
 
 let embeddedHost = null; // EmbeddedCuaDriverHost | null
+let linuxRuntime = null;
+let stateListener = () => {};
 const connectionStore = createCuaConnectionStore({
   getUserData: () => app.getPath("userData"),
 });
+
+function ensureLinuxRuntime() {
+  if (!linuxRuntime) {
+    linuxRuntime = createLinuxCuaRuntime({
+      getUserData: () => app.getPath("userData"),
+      connectionStore,
+      onChange: (connection) => stateListener(connection),
+    });
+  }
+  return linuxRuntime;
+}
+
+export function setCuaStateListener(listener) {
+  stateListener = typeof listener === "function" ? listener : () => {};
+}
 
 export function resolveDriverBinary() {
   if (process.env.CUA_DRIVER_PATH) return process.env.CUA_DRIVER_PATH;
@@ -76,6 +94,7 @@ async function startEmbedded(binary) {
 }
 
 export async function startCua() {
+  if (process.platform === "linux") return ensureLinuxRuntime().initialize();
   const binary = resolveDriverBinary();
   if (!binary) {
     return connectionStore.persist({
@@ -132,6 +151,10 @@ export function cuaPermissionsStatus() {
 }
 
 export async function stopCua() {
+  if (linuxRuntime) {
+    await linuxRuntime.shutdown();
+    return;
+  }
   if (embeddedHost) {
     try {
       await embeddedHost.stop();
@@ -149,4 +172,30 @@ export async function stopCua() {
 export function registerCuaIpc() {
   ipcMain.handle("cua:connection", () => connectionStore.get());
   ipcMain.handle("cua:permissions", () => cuaPermissionsStatus());
+  ipcMain.handle("cua:linux-status", () =>
+    process.platform === "linux"
+      ? ensureLinuxRuntime().getStatus()
+      : { enabled: false, status: "unavailable", reasonCode: "unsupported-platform" },
+  );
+  ipcMain.handle("cua:linux-enable", async () => {
+    if (process.platform !== "linux") {
+      return { enabled: false, status: "unavailable", reasonCode: "unsupported-platform" };
+    }
+    await ensureLinuxRuntime().enable();
+    return ensureLinuxRuntime().getStatus();
+  });
+  ipcMain.handle("cua:linux-disable", async () => {
+    if (process.platform !== "linux") {
+      return { enabled: false, status: "unavailable", reasonCode: "unsupported-platform" };
+    }
+    await ensureLinuxRuntime().disable();
+    return ensureLinuxRuntime().getStatus();
+  });
+  ipcMain.handle("cua:linux-retry", async () => {
+    if (process.platform !== "linux") {
+      return { enabled: false, status: "unavailable", reasonCode: "unsupported-platform" };
+    }
+    await ensureLinuxRuntime().retry();
+    return ensureLinuxRuntime().getStatus();
+  });
 }

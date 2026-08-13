@@ -21,9 +21,17 @@ function linuxSession(platform, env) {
 }
 
 function localComputerReady(platform, connection) {
+  if (platform === "darwin") {
+    return connection?.mode === "embedded" || connection?.mode === "standalone";
+  }
   return (
-    platform === "darwin" &&
-    (connection?.mode === "embedded" || connection?.mode === "standalone")
+    platform === "linux" &&
+    connection?.schemaVersion === 1 &&
+    connection?.mode === "linux-x11-supervised" &&
+    connection?.platform === "linux" &&
+    connection?.session === "x11" &&
+    connection?.enabled === true &&
+    connection?.status === "ready"
   );
 }
 
@@ -72,15 +80,30 @@ function desktopCapabilities({
     },
     localComputer: {
       available: localAvailable,
-      support: localAvailable ? "supported" : "unsupported",
+      support: localAvailable && hostPlatform === "linux" ? "limited" : localAvailable ? "supported" : "unsupported",
+      enabled: connectionEnabled(hostPlatform, localConnection),
+      status: localAvailable ? "ready" : localConnection?.status ?? "unavailable",
+      ...(typeof localConnection?.message === "string" ? { message: localConnection.message } : {}),
+      ...(typeof localConnection?.driver?.path === "string"
+        ? { driverPath: localConnection.driver.path }
+        : {}),
+      ...(typeof localConnection?.driver?.version === "string"
+        ? { driverVersion: localConnection.driver.version }
+        : {}),
       ...(!localAvailable
         ? {
             reasonCode:
-              hostPlatform === "darwin" ? "cua-driver-unavailable" : "unsupported-platform",
+              localConnection?.reasonCode ??
+              (hostPlatform === "darwin" ? "cua-driver-unavailable" : "unsupported-platform"),
           }
         : {}),
     },
   };
 }
 
-module.exports = { desktopCapabilities, linuxSession, localComputerReady };
+function connectionEnabled(platform, connection) {
+  if (platform === "darwin") return localComputerReady(platform, connection);
+  return platform === "linux" && connection?.enabled === true;
+}
+
+module.exports = { connectionEnabled, desktopCapabilities, linuxSession, localComputerReady };
