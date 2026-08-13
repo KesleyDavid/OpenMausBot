@@ -10,7 +10,7 @@
 // `request-review` auto-denies; `--dangerously-skip-permissions` (fullAuto)
 // approves everything. Real per-action approval cards are a future path via
 // native ACP (agy issue #31), which would reuse acp/core.ts like grok/gemini.
-import { spawn, execFile } from "node:child_process";
+import { execCli, killCliTree, spawnCli } from "../procs.ts";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
@@ -92,19 +92,14 @@ export const AntigravityDriver: ProviderDriver<AntigravityConfig> = {
       for (const l of [...listeners]) l(event);
     };
 
-    // SIGTERM every tracked child's process group (mirrors the per-turn stop()).
-    // When escalate is set, a SIGKILL follows after a short grace for any child
-    // that ignored the term — used on dispose, where we must guarantee reaping.
+    // Reap every tracked child's tree (mirrors the per-turn stop()) — POSIX
+    // process group on mac/linux, taskkill /T on Windows. When escalate is
+    // set a SIGKILL follows after a grace for anything that ignored the term;
+    // on Windows killCliTree is already a force kill, so the retry is a no-op.
     const reapChildren = (escalate: boolean) => {
       for (const child of children) {
-        try {
-          process.kill(-child.pid!, "SIGTERM");
-        } catch {
-          try {
-            child.kill("SIGTERM");
-          } catch {}
-        }
-        if (escalate) {
+        killCliTree(child);
+        if (escalate && process.platform !== "win32") {
           setTimeout(() => {
             try {
               process.kill(-child.pid!, "SIGKILL");
@@ -186,11 +181,12 @@ export const AntigravityDriver: ProviderDriver<AntigravityConfig> = {
 
       const env: Record<string, string | undefined> = { ...process.env, PATH: augmentedPath() };
 
-      const child = spawn(config.cli, args, {
+      // spawnCli resolves npm .cmd shims / shebang scripts on Windows and
+      // owns the process-group vs windowsHide difference (see procs.ts)
+      const child = spawnCli(config.cli, args, {
         cwd,
         env,
         stdio: ["ignore", "pipe", "pipe"], // prompt is on argv; stdin is unused
-        detached: true, // own process group: killing -pid reaps children
       });
       children.add(child);
 
@@ -294,15 +290,7 @@ export const AntigravityDriver: ProviderDriver<AntigravityConfig> = {
         }
       });
 
-      const stop = () => {
-        try {
-          process.kill(-child.pid!, "SIGTERM");
-        } catch {
-          try {
-            child.kill("SIGTERM");
-          } catch {}
-        }
-      };
+      const stop = () => killCliTree(child); // process groups are POSIX-only
       active.set(threadId, { stop, turnId });
 
       // 11 min — just above agy's own 10m --print-timeout, so agy normally
@@ -323,7 +311,7 @@ export const AntigravityDriver: ProviderDriver<AntigravityConfig> = {
 
     const snapshot = async (): Promise<ProviderSnapshot> => {
       const version = await new Promise<string | null>((resolve) => {
-        execFile(config.cli, ["--version"], { timeout: 8000, env: { ...process.env, PATH: augmentedPath() } }, (err, stdout) =>
+        execCli(config.cli, ["--version"], { timeout: 8000, env: { ...process.env, PATH: augmentedPath() } }, (err, stdout) =>
           resolve(err ? null : stdout.trim()),
         );
       });
@@ -363,7 +351,7 @@ export const AntigravityDriver: ProviderDriver<AntigravityConfig> = {
       },
       generateText: (prompt: string) =>
         new Promise((resolve, reject) => {
-          execFile(
+          execCli(
             config.cli,
             ["-p", prompt, "--output-format", "text", "--model", "gemini-3.6-flash-low"],
             { timeout: 60_000, env: { ...process.env, PATH: augmentedPath() } },
