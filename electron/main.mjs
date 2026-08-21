@@ -116,8 +116,14 @@ function applyUnreadBadge(win = mainWindow) {
 }
 
 // GNOME groups the window with its installed desktop entry only when both
-// identities match. This must run before Electron becomes ready.
-if (process.platform === "linux") app.setDesktopName("com.openmausbot.app.desktop");
+// identities match. This must run before Electron becomes ready. Ubuntu also
+// uses Chromium's software renderer: the supported machine reproduced two
+// NVIDIA/libGLES GPU-process crashes that left an invisible focused window
+// intercepting input. This app is not graphics-heavy, so reliability wins.
+if (process.platform === "linux") {
+  app.disableHardwareAcceleration();
+  app.setDesktopName("com.openmausbot.app.desktop");
+}
 
 // One instance per user: without this lock a second launch forks a second
 // harness server on a fallback port and splits data dirs in two. The loser
@@ -731,6 +737,7 @@ function createWindow() {
             mcpEnv: connection?.mcp?.env,
           };
         }
+        result.hardwareAccelerationEnabled = app.isHardwareAccelerationEnabled();
         result.displayMediaRequests = displayMediaRequestCount;
         console.log(`[smoke] renderer-ready ${JSON.stringify(result)}`);
       } catch (error) {
