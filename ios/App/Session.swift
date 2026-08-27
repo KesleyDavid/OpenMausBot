@@ -376,6 +376,9 @@ final class Session: ObservableObject {
     }
 
     private var lingerTask: UIBackgroundTaskIdentifier = .invalid
+    /// Identifies the background window currently allowed to end the stream.
+    /// A sleeper from an earlier window may wake after a newer one has opened.
+    private var lingerGeneration = 0
 
     /// Leaving the screen: keep the stream alive for the grace period iOS
     /// allows (~30 s) rather than cutting it at once, so an approval that
@@ -384,13 +387,22 @@ final class Session: ObservableObject {
     /// the cursor is written down at a known point.
     func linger() {
         guard streamTask != nil, lingerTask == .invalid else { disconnect(); return }
+        lingerGeneration += 1
+        let generation = lingerGeneration
         lingerTask = UIApplication.shared.beginBackgroundTask(withName: "companion.linger") { [weak self] in
             // time is up before our own timer — the system wants us gone now
-            self?.disconnect()
+            guard let self,
+                  self.lingerGeneration == generation,
+                  self.lingerTask != .invalid
+            else { return }
+            self.disconnect()
         }
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(25))
-            guard let self, self.lingerTask != .invalid else { return }
+            guard let self,
+                  self.lingerGeneration == generation,
+                  self.lingerTask != .invalid
+            else { return }
             self.disconnect()
         }
     }
