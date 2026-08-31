@@ -52,7 +52,7 @@ const HAND_OFF_TYPES = new Set(HAND_OFF_PACKAGE_TYPES);
 // Do what this app already does for engine installs: put the exact command on
 // the clipboard and open a blank terminal to paste it into. The command is
 // never executed for the user, so nothing here becomes a process argument.
-function handOffDownloadedPackage(packageType) {
+export function handOffDownloadedPackage(packageType) {
   return async (files) => {
     const target = files?.find((file) => typeof file === "string" && file.length > 0);
     const command = packageInstallCommand(packageType, target);
