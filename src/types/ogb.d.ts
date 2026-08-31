@@ -306,6 +306,10 @@ export interface UpdaterState {
    * which is what Ubuntu .deb (and rpm/pacman) builds use.
    */
   installMode?: "restart" | "handoff";
+  /** hand-off only: the install command, already on the clipboard */
+  command?: string;
+  /** hand-off only: whether a terminal was opened to paste it into */
+  terminalOpened?: boolean;
 }
 
 export interface CompanionAccountState {

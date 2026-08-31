@@ -63,7 +63,7 @@ export function UpdateBanner() {
               ? "Opening your package manager…"
               : "Restarting to update…"
             : s.status === "handed-off"
-              ? "Finish the install"
+              ? "Finish in a terminal"
               : "Update check failed";
   const subtitle =
     s.status === "available"
@@ -75,14 +75,16 @@ export function UpdateBanner() {
           : `${Math.round(s.percent)}%`
         : s.status === "downloaded"
           ? handoff
-            ? "Install it with your package manager."
+            ? "Copy the install command and open a terminal."
             : "Restart to finish updating."
           : installing
             ? handoff
-              ? "Complete the install there, then reopen OpenMausBot."
+              ? "Copying the command…"
               : "OpenMausBot will reopen in a moment."
             : s.status === "handed-off"
-              ? "Complete it in your package manager, then reopen OpenMausBot."
+              ? s.terminalOpened
+                ? "Command copied — paste it in the terminal that opened."
+                : "Command copied — paste it in a terminal to finish."
               : friendlyError(s.message);
 
   return (
@@ -107,6 +109,12 @@ export function UpdateBanner() {
           </button>
         )}
       </div>
+
+      {s.status === "handed-off" && s.command && (
+        <code className="mt-2.5 block overflow-x-auto rounded-lg bg-control px-2 py-1.5 font-mono text-[11.5px] whitespace-pre text-ink-secondary">
+          {s.command}
+        </code>
+      )}
 
       {s.status === "downloading" && (
         <div className="mt-2.5 h-1 overflow-hidden rounded-full bg-control">

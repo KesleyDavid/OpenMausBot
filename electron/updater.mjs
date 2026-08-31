@@ -6,10 +6,12 @@
 // signing). In dev it's a no-op so the browser/dev shell is unaffected.
 // electron-updater is vendored (electron/vendor/electron-updater.cjs) because
 // the packaged app ships no node_modules.
-import { app, ipcMain, shell } from "electron";
+import { app, clipboard, ipcMain } from "electron";
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
+import { HAND_OFF_PACKAGE_TYPES, packageInstallCommand } from "./package-install-command.mjs";
+import { openBlankTerminal } from "./terminal-launch.mjs";
 import { createUpdaterCoordinator } from "./updater-coordinator.mjs";
 
 const require = createRequire(import.meta.url);
@@ -59,20 +61,19 @@ function linuxPackageType() {
 // A system package is the distro's to install, not ours. Left to
 // electron-updater, a .deb update raises a polkit root prompt out of a chat
 // app, runs `dpkg -i` (which resolves no dependencies) and replaces
-// /opt/OpenMausBot while this very process is still running. Hand the
-// downloaded package to the desktop instead and let the user finish there.
-const HAND_OFF_PACKAGE_TYPES = new Set(["deb", "rpm", "pacman"]);
+// /opt/OpenMausBot while this very process is still running.
+const HAND_OFF_TYPES = new Set(HAND_OFF_PACKAGE_TYPES);
 
-async function openDownloadedPackage(files) {
-  const target = files?.find((file) => typeof file === "string" && file.length > 0);
-  if (!target) {
-    throw new Error("The downloaded package is no longer available. Download it again.");
-  }
-  // Empty string means the desktop took it; anything else is the failure
-  // reason. With no handler registered for the package type, showing the file
-  // still leaves the user somewhere they can act.
-  const failure = await shell.openPath(target);
-  if (failure) shell.showItemInFolder(target);
+// Do what this app already does for engine installs: put the exact command on
+// the clipboard and open a blank terminal to paste it into. The command is
+// never executed for the user, so nothing here becomes a process argument.
+function handOffDownloadedPackage(packageType) {
+  return async (files) => {
+    const target = files?.find((file) => typeof file === "string" && file.length > 0);
+    const command = packageInstallCommand(packageType, target);
+    clipboard.writeText(command);
+    return { command, terminalOpened: await openBlankTerminal() };
+  };
 }
 
 function setState(patch) {
@@ -115,10 +116,11 @@ export function startUpdater(mainWindow) {
 
   // Broadcast the install flavour before the first check so the banner never
   // offers a restart it cannot deliver.
-  const handOff = HAND_OFF_PACKAGE_TYPES.has(linuxPackageType());
+  const packageType = linuxPackageType();
+  const handOff = HAND_OFF_TYPES.has(packageType);
   setState({ installMode: handOff ? "handoff" : "restart" });
   updaterCoordinator = createUpdaterCoordinator(autoUpdater, setState, {
-    handOffInstall: handOff ? openDownloadedPackage : null,
+    handOffInstall: handOff ? handOffDownloadedPackage(packageType) : null,
   });
 
   // first check ~15s after launch (let the app settle), then hourly — both

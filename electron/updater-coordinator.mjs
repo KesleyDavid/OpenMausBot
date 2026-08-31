@@ -1,7 +1,9 @@
 // `handOffInstall` swaps the terminal step: instead of quitting and letting
 // electron-updater run the installer, the downloaded file is handed to the
-// platform. Ubuntu system packages use it — see electron/updater.mjs for why a
+// user. Ubuntu system packages use it — see electron/updater.mjs for why a
 // chat app must not run dpkg itself. Everything before the install is shared.
+// It receives the staged paths and resolves with an optional state patch
+// describing what is left to do, which the card renders.
 export function createUpdaterCoordinator(updater, setState, { handOffInstall = null } = {}) {
   let checkOperation = null;
   // Set from downloadUpdate's resolution: the paths electron-updater staged.
@@ -164,10 +166,10 @@ export function createUpdaterCoordinator(updater, setState, { handOffInstall = n
     setState({ status: "installing" });
     Promise.resolve()
       .then(() => handOffInstall(downloadedFiles))
-      .then(() => {
+      .then((patch) => {
         if (installOperation !== operation) return;
         installOperation = null;
-        setState({ status: "handed-off" });
+        setState({ status: "handed-off", ...patch });
       })
       .catch((error) => {
         if (installOperation !== operation) return;

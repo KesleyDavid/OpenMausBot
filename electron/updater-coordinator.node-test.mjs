@@ -342,7 +342,8 @@ test("the hand-off install opens the staged package instead of quitting", async 
   const h = harness({
     handOffInstall: (files) => {
       received.push(files);
-      return Promise.resolve();
+      // what the user still has to do travels back with the state
+      return Promise.resolve({ command: "sudo apt-get install -y '/tmp/x.deb'", terminalOpened: true });
     },
   });
   h.updater.quitAndInstall = () => assert.fail("a system package must not be installed by quitAndInstall");
@@ -357,6 +358,8 @@ test("the hand-off install opens the staged package instead of quitting", async 
   assert.equal(h.getState().status, "handed-off");
   // the user watched something happen between the click and the result
   assert.ok(h.states.some((entry) => entry.status === "installing"));
+  assert.equal(h.getState().command, "sudo apt-get install -y '/tmp/x.deb'");
+  assert.equal(h.getState().terminalOpened, true);
 });
 
 test("a failed hand-off is reported instead of leaving the card spinning", async () => {
