@@ -10,6 +10,7 @@ import test from "node:test";
 
 import {
   HAND_OFF_PACKAGE_TYPES,
+  linuxPackageType,
   packageInstallCommand,
   shellQuote,
 } from "./package-install-command.mjs";
@@ -72,4 +73,77 @@ test("the whole command parses into the arguments apt-get would receive", () => 
   );
 
   assert.deepEqual(printed.split("\n").filter(Boolean), ["install", "-y", file]);
+});
+
+// The routing decides everything: a .deb that resolves to "AppImage" would
+// quit and let electron-updater run dpkg under the live app, and an AppImage
+// that resolves to "deb" would offer a command instead of updating itself.
+test("the package marker decides the install path", () => {
+  const marker = (declared) => (file) => (file.endsWith("package-type") ? declared : null);
+
+  assert.equal(
+    linuxPackageType({ platform: "linux", resourcesPath: "/opt/app/resources", readMarker: marker("deb\n") }),
+    "deb",
+  );
+  // An AppImage ships no marker, so the env probe is what identifies it.
+  assert.equal(
+    linuxPackageType({
+      platform: "linux",
+      resourcesPath: "/tmp/squashfs-root/resources",
+      appImage: "/home/u/OpenMausBot.AppImage",
+      readMarker: marker(null),
+    }),
+    "AppImage",
+  );
+  // The marker wins, matching electron-updater's own precedence. If packaging
+  // ever wrote it into the shared tree before the AppImage was sealed, both
+  // would say "deb" — which is why verify-linux-package.mjs pins it.
+  assert.equal(
+    linuxPackageType({
+      platform: "linux",
+      resourcesPath: "/opt/app/resources",
+      appImage: "/home/u/OpenMausBot.AppImage",
+      readMarker: marker("deb"),
+    }),
+    "deb",
+  );
+});
+
+test("a build with nothing to identify it keeps the restart path", () => {
+  const none = () => null;
+
+  assert.equal(
+    linuxPackageType({ platform: "linux", resourcesPath: "/opt/app/resources", appImage: undefined, readMarker: none }),
+    null,
+  );
+  // No resourcesPath means no marker to read — an explicit answer, not one
+  // reached by throwing into the fallback.
+  assert.equal(linuxPackageType({ platform: "linux", resourcesPath: undefined, readMarker: none }), null);
+  assert.equal(
+    linuxPackageType({ platform: "linux", resourcesPath: undefined, appImage: "/a.AppImage", readMarker: none }),
+    "AppImage",
+  );
+  assert.equal(linuxPackageType({ platform: "darwin", readMarker: none }), null);
+  assert.equal(linuxPackageType({ platform: "win32", readMarker: none }), null);
+  // An empty or unreadable marker must not become a package type.
+  assert.equal(
+    linuxPackageType({
+      platform: "linux",
+      resourcesPath: "/opt/app/resources",
+      appImage: undefined,
+      readMarker: () => "  \n",
+    }),
+    null,
+  );
+  assert.equal(
+    linuxPackageType({
+      platform: "linux",
+      resourcesPath: "/opt/app/resources",
+      appImage: undefined,
+      readMarker: () => {
+        throw new Error("EACCES");
+      },
+    }),
+    null,
+  );
 });

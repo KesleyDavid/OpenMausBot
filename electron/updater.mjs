@@ -10,7 +10,11 @@ import { app, clipboard, ipcMain } from "electron";
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
-import { HAND_OFF_PACKAGE_TYPES, packageInstallCommand } from "./package-install-command.mjs";
+import {
+  HAND_OFF_PACKAGE_TYPES,
+  linuxPackageType,
+  packageInstallCommand,
+} from "./package-install-command.mjs";
 import { openBlankTerminal } from "./terminal-launch.mjs";
 import { createUpdaterCoordinator } from "./updater-coordinator.mjs";
 
@@ -37,25 +41,6 @@ function updaterLogger() {
     }
   };
   return Object.fromEntries(["debug", "info", "warn", "error"].map((level) => [level, (...values) => write(level, values)]));
-}
-
-// Which Linux artifact is running. electron-updater resolves its installer the
-// same way (resources/package-type first, APPIMAGE env as the fallback), so
-// mirroring it here keeps the banner's promise and the updater's behaviour in
-// step. Returns null off Linux and for an unpackaged tree.
-function linuxPackageType() {
-  if (process.platform !== "linux") return null;
-  try {
-    const identity = join(process.resourcesPath, "package-type");
-    if (existsSync(identity)) {
-      const declared = readFileSync(identity, "utf8").trim();
-      if (declared) return declared;
-    }
-  } catch {
-    // An unreadable marker is not worth failing the updater over — fall
-    // through to the AppImage probe and treat the build as portable.
-  }
-  return process.env.APPIMAGE ? "AppImage" : null;
 }
 
 // A system package is the distro's to install, not ours. Left to
@@ -116,7 +101,7 @@ export function startUpdater(mainWindow) {
 
   // Broadcast the install flavour before the first check so the banner never
   // offers a restart it cannot deliver.
-  const packageType = linuxPackageType();
+  const packageType = linuxPackageType({ readMarker: (file) => (existsSync(file) ? readFileSync(file, "utf8") : null) });
   const handOff = HAND_OFF_TYPES.has(packageType);
   setState({ installMode: handOff ? "handoff" : "restart" });
   updaterCoordinator = createUpdaterCoordinator(autoUpdater, setState, {

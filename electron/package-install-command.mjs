@@ -1,3 +1,5 @@
+import { join } from "node:path";
+
 // The command a Linux user pastes to finish an update.
 //
 // OpenMausBot is installed from the releases repository by hand, not from a
@@ -5,6 +7,36 @@
 // 24.04 registers App Center for .deb and may not install a local one at all.
 // The app therefore never installs the package itself; it downloads it,
 // verifies it, and hands over this exact line.
+
+/** Which Linux artifact is running. electron-updater resolves its installer
+ * the same way — resources/package-type first, APPIMAGE env as the fallback —
+ * so mirroring it keeps the card's promise and the updater's behaviour in
+ * step. `deps` is injected so the routing can be tested without a package.
+ *
+ * A marker present in BOTH artifacts would silently route the AppImage to the
+ * hand-off; scripts/verify-linux-package.mjs guards the packaging side. */
+export function linuxPackageType({
+  platform = process.platform,
+  resourcesPath = process.resourcesPath,
+  appImage = process.env.APPIMAGE,
+  readMarker,
+} = {}) {
+  if (platform !== "linux") return null;
+  // Electron always defines resourcesPath; without it there is no marker to
+  // read, and joining undefined would throw into the catch below and reach the
+  // same answer by accident. Say so instead.
+  if (typeof resourcesPath !== "string" || resourcesPath.length === 0) {
+    return appImage ? "AppImage" : null;
+  }
+  try {
+    const declared = readMarker(join(resourcesPath, "package-type"));
+    if (declared) return declared.trim() || null;
+  } catch {
+    // An unreadable marker is not worth failing the updater over — fall
+    // through to the AppImage probe and treat the build as portable.
+  }
+  return appImage ? "AppImage" : null;
+}
 
 const BUILDERS = {
   // apt-get, never `dpkg -i`: only apt-get resolves dependencies, and Ubuntu
