@@ -14939,7 +14939,6 @@ var require_AppImageUpdater = __commonJS({
         if (!path2.isAbsolute(appImageFile) || appImageFile.includes("\0")) {
           throw (0, builder_util_runtime_1.newError)(`APPIMAGE env is not a valid absolute path: "${appImageFile}"`, "ERR_UPDATER_OLD_FILE_NOT_FOUND");
         }
-        (0, fs_1.unlinkSync)(appImageFile);
         let destination;
         const existingBaseName = path2.basename(appImageFile);
         const installerPath = this.installerPath;
@@ -14952,7 +14951,9 @@ var require_AppImageUpdater = __commonJS({
         } else {
           destination = appImageFile;
         }
-        (0, child_process_1.execFileSync)("mv", ["-f", installerPath, destination]);
+        const stagedDestination = `${destination}.new`;
+        (0, child_process_1.execFileSync)("mv", ["-f", installerPath, stagedDestination]);
+        (0, fs_1.renameSync)(stagedDestination, destination);
         if (destination !== appImageFile) {
           this.emit("appimage-filename-updated", destination);
         }

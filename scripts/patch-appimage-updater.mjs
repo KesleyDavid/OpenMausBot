@@ -20,20 +20,61 @@ const RENAME_ASSIGNMENT =
 
 const IN_PLACE_ASSIGNMENT = "destination = appImageFile;";
 
+// Upstream also deletes the running AppImage before it has validated anything
+// and before the replacement exists:
+//
+//   unlinkSync(appImageFile);
+//   const installerPath = this.installerPath;
+//   if (installerPath == null) { …; return false; }   // app already deleted
+//   execFileSync("mv", ["-f", installerPath, destination]);
+//
+// Anything that fails past that first line leaves the user with no
+// application at all. A failed update should cost them nothing. The staged
+// download also lives in the updater cache, which can sit on another
+// filesystem, so `mv` may fall back to copy-then-unlink and write into the
+// destination while it is still a running executable.
+//
+// Land it in two steps instead. Moving into a sibling of the destination
+// absorbs any cross-filesystem copy, then rename(2) within a single directory
+// replaces the old file atomically and works over a running binary. Nothing
+// is removed until the replacement is complete.
+const UNLINK_BEFORE_INSTALL = /^\s*\(0, fs_1\.unlinkSync\)\(appImageFile\);\n/m;
+
+const MOVE_INTO_PLACE =
+  /\(0, child_process_1\.execFileSync\)\("mv", \["-f", installerPath, destination\]\);/;
+
+const ATOMIC_MOVE = [
+  'const stagedDestination = `${destination}.new`;',
+  '(0, child_process_1.execFileSync)("mv", ["-f", installerPath, stagedDestination]);',
+  "(0, fs_1.renameSync)(stagedDestination, destination);",
+].join("\n        ");
+
+const REPLACEMENTS = [
+  ["rename branch", RENAME_ASSIGNMENT, IN_PLACE_ASSIGNMENT],
+  ["unlink before install", UNLINK_BEFORE_INSTALL, ""],
+  ["move into place", MOVE_INTO_PLACE, ATOMIC_MOVE],
+];
+
 /**
- * Rewrite the AppImage rename branch to keep the running file's path.
- * Throws when the upstream shape moved: a silently unpatched bundle would
- * ship the launcher-breaking behaviour again.
+ * Keep an AppImage update on the running file's path, and never remove that
+ * file until the replacement is in place.
+ *
+ * Throws when any step's upstream shape moved: a silently unpatched bundle
+ * would ship the launcher-breaking behaviour again.
  */
 export function patchAppImageUpdater(source) {
-  const matches = source.match(RENAME_ASSIGNMENT);
-  const count = matches ? matches.length : 0;
-  if (count !== 1) {
-    throw new Error(
-      `Expected exactly 1 AppImage rename assignment to patch, found ${count}. ` +
-        "electron-updater's AppImageUpdater.doInstall changed shape — re-read it and update " +
-        "scripts/patch-appimage-updater.mjs before releasing.",
-    );
+  let patched = source;
+  for (const [label, pattern, replacement] of REPLACEMENTS) {
+    const found = patched.match(pattern);
+    const count = found ? (pattern.global ? found.length : 1) : 0;
+    if (count !== 1) {
+      throw new Error(
+        `Expected exactly 1 AppImage "${label}" site to patch, found ${count}. ` +
+          "electron-updater's AppImageUpdater.doInstall changed shape — re-read it and update " +
+          "scripts/patch-appimage-updater.mjs before releasing.",
+      );
+    }
+    patched = patched.replace(pattern, replacement);
   }
-  return source.replace(RENAME_ASSIGNMENT, IN_PLACE_ASSIGNMENT);
+  return patched;
 }
