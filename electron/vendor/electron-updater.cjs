@@ -14950,7 +14950,7 @@ var require_AppImageUpdater = __commonJS({
         if (path2.basename(installerPath) === existingBaseName || !/\d+\.\d+\.\d+/.test(existingBaseName)) {
           destination = appImageFile;
         } else {
-          destination = path2.join(path2.dirname(appImageFile), path2.basename(installerPath));
+          destination = appImageFile;
         }
         (0, child_process_1.execFileSync)("mv", ["-f", installerPath, destination]);
         if (destination !== appImageFile) {

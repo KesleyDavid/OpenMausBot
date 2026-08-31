@@ -1,5 +1,12 @@
-export function createUpdaterCoordinator(updater, setState) {
+// `handOffInstall` swaps the terminal step: instead of quitting and letting
+// electron-updater run the installer, the downloaded file is handed to the
+// platform. Ubuntu system packages use it — see electron/updater.mjs for why a
+// chat app must not run dpkg itself. Everything before the install is shared.
+export function createUpdaterCoordinator(updater, setState, { handOffInstall = null } = {}) {
   let checkOperation = null;
+  // Set from downloadUpdate's resolution: the paths electron-updater staged.
+  // Only the hand-off needs them; quitAndInstall reads its own copy.
+  let downloadedFiles = null;
   let downloadOperation = null;
   let installOperation = null;
   const routedErrors = new WeakSet();
@@ -101,6 +108,9 @@ export function createUpdaterCoordinator(updater, setState) {
     try {
       operation.promise = Promise.resolve(updater.downloadUpdate())
         .then((result) => {
+          if (!operation.failed) {
+            downloadedFiles = Array.isArray(result) ? result.filter((file) => typeof file === "string") : null;
+          }
           if (!operation.failed && operation.downloadedInfo) {
             setState({ status: "downloaded", version: operation.downloadedInfo?.version });
           }
@@ -120,6 +130,10 @@ export function createUpdaterCoordinator(updater, setState) {
 
   function install() {
     if (installOperation) return;
+    if (handOffInstall) {
+      handOff();
+      return;
+    }
     const operation = { failed: false, timer: null };
     installOperation = operation;
     setState({ status: "installing" });
@@ -139,6 +153,26 @@ export function createUpdaterCoordinator(updater, setState) {
       }, 2 * 60 * 1000);
       operation.timer.unref?.();
     }
+  }
+
+  // The platform owns the install from here: the package manager opens and the
+  // user finishes there. No quit — the running app stays usable, and the new
+  // version is picked up the next time it starts.
+  function handOff() {
+    const operation = { failed: false, timer: null };
+    installOperation = operation;
+    setState({ status: "installing" });
+    Promise.resolve()
+      .then(() => handOffInstall(downloadedFiles))
+      .then(() => {
+        if (installOperation !== operation) return;
+        installOperation = null;
+        setState({ status: "handed-off" });
+      })
+      .catch((error) => {
+        if (installOperation !== operation) return;
+        routeError(true, error);
+      });
   }
 
   return { check, download, install };

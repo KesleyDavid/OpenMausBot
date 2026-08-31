@@ -265,7 +265,7 @@ type SkillRecordingPayload = {
       updater?: {
         check(): Promise<void>;
         download(): Promise<void>;
-        /** quit-and-install the downloaded update */
+        /** apply the download: quit-and-install, or hand it to the package manager */
         install(): Promise<void>;
         onState(cb: (s: UpdaterState) => void): () => void;
       };
@@ -294,10 +294,18 @@ export interface UpdaterState {
     | "downloading"
     | "downloaded"
     | "installing"
+    /** the package manager has the download; the user finishes there */
+    | "handed-off"
     | "error";
   version?: string;
   percent?: number;
   message?: string;
+  /**
+   * How the download gets applied. "restart" quits and installs in place;
+   * "handoff" opens the downloaded package in the system package manager,
+   * which is what Ubuntu .deb (and rpm/pacman) builds use.
+   */
+  installMode?: "restart" | "handoff";
 }
 
 export interface CompanionAccountState {
