@@ -3,7 +3,7 @@
 // is stuck with a downloaded package and no way to finish.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -40,9 +40,14 @@ test("a missing download is reported instead of building a broken command", () =
   assert.throws(() => packageInstallCommand("deb", ""), /no longer available/);
 });
 
+// These two proofs use a POSIX shell as the referee: only the shell itself
+// can say what the quoting parses into. Windows CI has no /bin/sh, and no
+// Windows user is ever handed this command.
+const posixShell = existsSync("/bin/sh") ? false : "needs /bin/sh";
+
 // The path lives under $HOME, so it can carry whatever a directory name can.
 // A mis-quoted command would either fail to install or run something else.
-test("the quoted path survives a shell round-trip", () => {
+test("the quoted path survives a shell round-trip", { skip: posixShell }, () => {
   const workspace = mkdtempSync(join(tmpdir(), "omb-quote-"));
   try {
     for (const name of ["plain.deb", "with space.deb", "o'brien.deb", "a;b&c.deb", "$(echo bad).deb"]) {
@@ -60,7 +65,7 @@ test("the quoted path survives a shell round-trip", () => {
   }
 });
 
-test("the whole command parses into the arguments apt-get would receive", () => {
+test("the whole command parses into the arguments apt-get would receive", { skip: posixShell }, () => {
   const file = "/home/o'brien/.cache/openmausbot-updater/pending/OpenMausBot-0.1.44-amd64.deb";
   const command = packageInstallCommand("deb", file);
 
