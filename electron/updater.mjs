@@ -14,6 +14,7 @@ import {
   HAND_OFF_PACKAGE_TYPES,
   linuxPackageType,
   packageInstallCommand,
+  stagedInstallFile,
 } from "./package-install-command.mjs";
 import { openBlankTerminal } from "./terminal-launch.mjs";
 import { createUpdaterCoordinator } from "./updater-coordinator.mjs";
@@ -54,7 +55,7 @@ const HAND_OFF_TYPES = new Set(HAND_OFF_PACKAGE_TYPES);
 // never executed for the user, so nothing here becomes a process argument.
 export function handOffDownloadedPackage(packageType) {
   return async (files) => {
-    const target = files?.find((file) => typeof file === "string" && file.length > 0);
+    const target = stagedInstallFile(files);
     const command = packageInstallCommand(packageType, target);
     clipboard.writeText(command);
     return { command, terminalOpened: await openBlankTerminal() };

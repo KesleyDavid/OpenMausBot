@@ -47,7 +47,7 @@ export function UpdateBanner() {
   const installing = s.status === "installing";
   const busy = s.status === "downloading" || installing;
   // Ubuntu system packages can't be swapped under a running app, so the
-  // download is handed to the package manager and the user finishes there.
+  // command is copied and a terminal opens; the user finishes there.
   // Nothing restarts, and the card has to stop promising that it will.
   const handoff = s.installMode === "handoff";
 
@@ -60,7 +60,7 @@ export function UpdateBanner() {
           ? `${s.version} is ready`
           : installing
             ? handoff
-              ? "Opening your package manager…"
+              ? "Opening a terminal…"
               : "Restarting to update…"
             : s.status === "handed-off"
               ? "Finish in a terminal"

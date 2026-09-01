@@ -14,8 +14,6 @@ const { app, clipboard } = require("electron");
 
 if (process.platform === "linux") app.commandLine.appendSwitch("no-sandbox");
 
-const STAGED = "/home/tester/.cache/openmausbot-updater/pending/o'brien pkg.deb";
-
 function say(marker) {
   process.stdout.write(`${marker}\n`);
 }
@@ -24,11 +22,17 @@ async function main() {
   const { handOffDownloadedPackage } = await import("../updater.mjs");
   const { packageInstallCommand } = await import("../package-install-command.mjs");
   const handOff = handOffDownloadedPackage("deb");
-  const expected = packageInstallCommand("deb", STAGED);
 
   const workspace = mkdtempSync(join(tmpdir(), "omb-handoff-fixture-"));
   const realPath = process.env.PATH;
   try {
+    // A real staged file: the hand-off now refuses a path that is gone, so
+    // the quoting case has to exist on disk rather than being a string.
+    const pending = mkdtempSync(join(workspace, "o'brien "));
+    const staged = join(pending, "pkg.deb");
+    writeFileSync(staged, "x");
+    const expected = packageInstallCommand("deb", staged);
+
     // A terminal emulator that records being launched. openBlankTerminal tries
     // x-terminal-emulator first on Linux, and resolves it through PATH.
     const receipt = join(workspace, "launched");
@@ -38,7 +42,7 @@ async function main() {
 
     clipboard.writeText("something else entirely");
     process.env.PATH = workspace;
-    const result = await handOff([STAGED]);
+    const result = await handOff([staged]);
 
     if (clipboard.readText() === expected) say("clipboard-holds-the-install-command");
     else say(`clipboard-mismatch:${JSON.stringify(clipboard.readText())}`);
@@ -52,18 +56,24 @@ async function main() {
     const empty = mkdtempSync(join(tmpdir(), "omb-handoff-empty-"));
     clipboard.writeText("something else entirely");
     process.env.PATH = empty;
-    const withoutTerminal = await handOff([STAGED]);
+    const withoutTerminal = await handOff([staged]);
     if (withoutTerminal.terminalOpened === false) say("no-terminal-is-reported-honestly");
     if (clipboard.readText() === expected) say("clipboard-written-even-without-a-terminal");
     rmSync(empty, { recursive: true, force: true });
 
     // A download that vanished must be reported, not turned into a command
-    // that installs nothing.
+    // that installs nothing — empty list and a path that used to exist.
     process.env.PATH = realPath;
     await handOff([]).then(
       () => say("missing-download-was-not-reported"),
       (error) => {
         if (/no longer available/.test(error.message)) say("missing-download-is-reported");
+      },
+    );
+    await handOff([join(workspace, "gone.deb")]).then(
+      () => say("vanished-download-was-not-reported"),
+      (error) => {
+        if (/no longer available/.test(error.message)) say("vanished-download-is-reported");
       },
     );
   } finally {

@@ -13,6 +13,7 @@ import {
   linuxPackageType,
   packageInstallCommand,
   shellQuote,
+  stagedInstallFile,
 } from "./package-install-command.mjs";
 
 test("the Ubuntu command resolves dependencies", () => {
@@ -33,6 +34,33 @@ test("every hand-off package type has a command", () => {
     assert.match(packageInstallCommand(packageType, "/tmp/pkg"), /^sudo \S+/);
   }
   assert.throws(() => packageInstallCommand("snap", "/tmp/pkg"), /No install command/);
+});
+
+test("inherited Object names are not install commands", () => {
+  for (const name of ["toString", "constructor", "__proto__"]) {
+    assert.throws(() => packageInstallCommand(name, "/tmp/pkg"), /No install command/);
+  }
+});
+
+test("a staged path that is gone is not used", () => {
+  const workspace = mkdtempSync(join(tmpdir(), "omb-staged-"));
+  try {
+    const present = join(workspace, "OpenMausBot.deb");
+    writeFileSync(present, "x");
+    const missing = join(workspace, "gone.deb");
+
+    assert.equal(stagedInstallFile([present]), present);
+    assert.equal(stagedInstallFile([missing, present]), present);
+    assert.equal(stagedInstallFile([missing]), undefined);
+    assert.equal(stagedInstallFile([]), undefined);
+    assert.equal(stagedInstallFile(undefined), undefined);
+    assert.throws(
+      () => packageInstallCommand("deb", stagedInstallFile([missing])),
+      /no longer available/,
+    );
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+  }
 });
 
 test("a missing download is reported instead of building a broken command", () => {

@@ -157,9 +157,9 @@ export function createUpdaterCoordinator(updater, setState, { handOffInstall = n
     }
   }
 
-  // The platform owns the install from here: the package manager opens and the
-  // user finishes there. No quit — the running app stays usable, and the new
-  // version is picked up the next time it starts.
+  // The platform owns the install from here: a terminal opens with the
+  // command on the clipboard and the user finishes there. No quit — the
+  // running app stays usable, and the new version is picked up next launch.
   function handOff() {
     const operation = { failed: false, timer: null };
     installOperation = operation;

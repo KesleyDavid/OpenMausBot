@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 // The command a Linux user pastes to finish an update.
@@ -55,10 +56,17 @@ export function shellQuote(value) {
   return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
+/** The first staged path that still exists. A vanished download must not
+ * become a command that installs nothing. `exists` is injected so the
+ * filter can be tested without touching the disk layout of a real update. */
+export function stagedInstallFile(files, exists = existsSync) {
+  return files?.find((file) => typeof file === "string" && file.length > 0 && exists(file));
+}
+
 /** Throws for a package type with no builder, so a new target cannot reach
  * the banner with a command we never wrote. */
 export function packageInstallCommand(packageType, file) {
-  const build = BUILDERS[packageType];
+  const build = Object.hasOwn(BUILDERS, packageType) ? BUILDERS[packageType] : undefined;
   if (!build) throw new Error(`No install command for package type ${JSON.stringify(packageType)}`);
   if (typeof file !== "string" || file.length === 0) {
     throw new Error("The downloaded package is no longer available. Download it again.");

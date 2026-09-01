@@ -60,6 +60,7 @@ it.runIf(canRun)(
     expect(result.stdout, diagnostics).toContain("clipboard-written-even-without-a-terminal");
 
     expect(result.stdout, diagnostics).toContain("missing-download-is-reported");
+    expect(result.stdout, diagnostics).toContain("vanished-download-is-reported");
   },
   90_000,
 );

@@ -265,7 +265,7 @@ type SkillRecordingPayload = {
       updater?: {
         check(): Promise<void>;
         download(): Promise<void>;
-        /** apply the download: quit-and-install, or hand it to the package manager */
+        /** apply the download: quit-and-install, or copy the command and open a terminal */
         install(): Promise<void>;
         onState(cb: (s: UpdaterState) => void): () => void;
       };
@@ -294,7 +294,7 @@ export interface UpdaterState {
     | "downloading"
     | "downloaded"
     | "installing"
-    /** the package manager has the download; the user finishes there */
+    /** the command is on the clipboard; the user finishes in a terminal */
     | "handed-off"
     | "error";
   version?: string;
@@ -302,8 +302,8 @@ export interface UpdaterState {
   message?: string;
   /**
    * How the download gets applied. "restart" quits and installs in place;
-   * "handoff" opens the downloaded package in the system package manager,
-   * which is what Ubuntu .deb (and rpm/pacman) builds use.
+   * "handoff" copies the install command and opens a terminal so the user
+   * can finish — Ubuntu .deb (and rpm/pacman) builds use this.
    */
   installMode?: "restart" | "handoff";
   /** hand-off only: the install command, already on the clipboard */
